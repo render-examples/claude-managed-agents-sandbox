@@ -1,41 +1,39 @@
 # Build a coding agent with Claude Managed Agents and Render Sandboxes
 
-In this tutorial, you build a coding agent that accepts a prompt, streams
-Claude's work, and returns its response and output files.
+> **Note:** Render Sandboxes is in early access. Claude Managed Agents is in
+> beta and uses the `managed-agents-2026-04-01` API.
 
-Anthropic runs the Claude agent loop through Claude Managed Agents. A Managed
-Agents worker runs the coding agent's commands and file edits in an isolated
-Render Sandbox in your Render workspace.
+[Claude Managed Agents](https://platform.claude.com/docs/en/managed-agents/self-hosted-sandboxes)
+runs the Claude agent loop on Anthropic's infrastructure and sends each command
+and file edit to a worker that you host. Render Sandboxes gives that worker an
+isolated, ephemeral Linux environment in your Render workspace, with outbound
+traffic denied by default.
 
-You will learn how to:
+In this tutorial, you build a coding agent that accepts a prompt, runs Claude's
+commands and file edits in a Render Sandbox, and copies the output files to your
+machine. The [template source](https://github.com/render-examples/claude-managed-agents-sandbox)
+contains everything you run here.
 
-- connect a Claude Managed Agents Session to a worker in a Render Sandbox;
-- send a coding task as a prompt and follow native session events;
-- copy files the agent writes to `/workspace/output`; and
-- clean up the Session and sandbox without deleting shared configuration.
-
-Time to complete: about 20 minutes.
+Time to complete: 20 minutes
 
 ## Prerequisites
 
-You need:
+1. A Render workspace with Sandboxes enabled, a
+   [Render API key](https://render.com/docs/api), and your
+   workspace ID (`tea-...`).
+2. Claude Managed Agents beta access and an
+   [Anthropic API key](https://platform.claude.com/settings/keys).
+3. An existing Managed Agent and a dedicated `self_hosted` Environment, with an
+   Environment key generated in the Claude Console. The API can create an
+   Environment, but it cannot generate its key.
+4. [Node.js](https://nodejs.org/) 22 or later and Git.
 
-- A Render workspace with Render Sandboxes enabled
-- A Render API key and workspace ID
-- Claude Managed Agents beta access
-- An Anthropic application API key
-- An existing Managed Agent
-- An existing self-hosted Environment and Environment key
-- Node.js 20 or newer and Git
+The Managed Agent and Environment are shared configuration. The template creates
+and deletes only a per-run Session.
 
-The Managed Agent and self-hosted Environment are shared configuration. This
-template creates and deletes only the per-run Session.
+## 1. Get the template
 
-Claude Managed Agents is beta and currently uses the
-`managed-agents-2026-04-01` beta API. Generate the Environment key in the Claude
-Console; the API can create an Environment but does not generate its key.
-
-## Get the template
+Clone the tagged release and install its dependencies:
 
 ```bash
 git clone --branch v1.0.0 --depth 1 \
@@ -44,7 +42,7 @@ cd claude-managed-agents-sandbox
 npm ci
 ```
 
-## Configure credentials
+## 2. Configure credentials
 
 Copy the example environment file:
 
@@ -52,156 +50,190 @@ Copy the example environment file:
 cp .env.example .env
 ```
 
-Set:
+Fill in your values:
 
-```text
-RENDER_API_KEY=
-RENDER_WORKSPACE_ID=
-ANTHROPIC_API_KEY=
-ANTHROPIC_AGENT_ID=
-ANTHROPIC_ENVIRONMENT_ID=
-ANTHROPIC_ENVIRONMENT_KEY=
+```sh
+RENDER_API_KEY=rnd_your-render-api-key
+RENDER_WORKSPACE_ID=tea-your-workspace-id
+ANTHROPIC_API_KEY=sk-ant-your-application-key
+ANTHROPIC_AGENT_ID=your-managed-agent-id
+ANTHROPIC_ENVIRONMENT_ID=your-self-hosted-environment-id
+ANTHROPIC_ENVIRONMENT_KEY=your-environment-key
 ```
 
-`ANTHROPIC_API_KEY` stays with the application. Only the restricted Environment
-ID and key enter the sandbox. The current public Render SDK materializes that
-key as a creation-time environment variable; see the compatibility note below.
+`ANTHROPIC_API_KEY` stays on your machine. Only the Environment ID and its
+restricted key enter the sandbox.
 
-## Run the coding agent
+## 3. Run the agent
 
-Make sure another worker is not polling the example Environment, then run:
+Run the agent with a prompt:
 
 ```bash
 npm run agent -- "Create a hello world HTTP server in /workspace/output. Test it before you finish."
 ```
 
-Expected summary:
+The runner stops before creating anything if another worker is already polling
+the Environment, so that no other worker can claim this run.
+
+You should see Claude's activity stream to the console. Installer and worker
+logs are omitted here:
 
 ```text
 preflight     passed
+policy        default-deny allow-list: api.anthropic.com and pinned ant release download hosts
+credential    materialized restricted Anthropic Environment key; application API key excluded
 provision     sbx-...
 worker        polling
+session       sesn_...
 session       submitted
-agent         created and tested the server
+session       running
+tool          write
+tool          bash
+agent         I created /workspace/output/server.js and confirmed it responds with "Hello, world!".
 result        task completed
 outputs       copied 1 file to runs/run_.../output
 cleanup       session deleted; sandbox terminated
 ```
 
-## What happened
+Claude wrote the server, tested it inside the sandbox, and the runner copied it
+to your machine. Then the runner deleted the Session and terminated the sandbox.
 
-The template:
+## 4. Understand how it works
 
-1. Checks the configured Managed Agent and self-hosted Environment.
-2. Creates a Render Sandbox with the required egress policy.
-3. Starts the Managed Agents worker for the configured Environment.
-4. Confirms worker readiness through Anthropic's Environment work stats.
-5. Creates a Session targeting the configured Agent and Environment.
-6. Opens the native session event stream and sends your prompt.
-7. Streams the final result and copies files from `/workspace/output`.
-8. Deletes the per-run Session and terminates the Render Sandbox.
+[`src/agent.ts`](https://github.com/render-examples/claude-managed-agents-sandbox/blob/v1.0.0/src/agent.ts)
+runs one Session from start to finish. Simplified, the lifecycle is:
 
-The implementation uses Anthropic's native Agent, Environment, work, Session,
-and event APIs directly. It does not use a cross-provider adapter.
+```ts
+await claude.preflight(agentId, environmentId, signal);
+const sandbox = await render.createAndWait(launch, saveSandboxId, deadline, signal);
+await render.execBuffered(sandbox.id, "bash /tmp/install-executor.sh", signal);
+worker = await render.startWorker(sandbox.id, signal, secrets);
+await claude.waitForWorker(environmentId, deadline, signal);
 
-## How the template is organized
+const sessionId = await claude.createSession(agentId, environmentId, saveSessionId);
+const stream = await claude.openEventStream(sessionId, signal);
+await claude.sendPrompt(sessionId, prompt);
+const result = await consumeSessionEvents(stream, store, secrets);
+await collectOutputs(render, sandbox.id, outputRoot, signal, secrets);
 
-- [`src/agent.ts`](../src/agent.ts) coordinates the one-shot lifecycle.
-- [`src/anthropic.ts`](../src/anthropic.ts) uses native Managed Agents beta
-  resources and Environment work stats.
-- [`src/render.ts`](../src/render.ts) preserves Render's asynchronous creation,
-  streamed exec, in-memory download, and idempotent termination semantics.
-- [`src/policy.ts`](../src/policy.ts) contains the egress and credential
-  compatibility seam.
-- [`src/outputs.ts`](../src/outputs.ts) lists regular files in
-  `/workspace/output` and writes downloaded bytes locally.
-- [`scripts/install-executor.sh`](../scripts/install-executor.sh) installs
-  `ant` 2.1.0 after checking the pinned Linux amd64 or arm64 SHA-256.
+// In `finally`, on success, failure, timeout, or Ctrl+C:
+await cleanupRun(store, { deleteSession, terminateSandbox });
+```
+
+Here is what the key pieces do:
+
+| Piece | Purpose |
+| --- | --- |
+| `claude.preflight()` | Confirms that the Agent and Environment exist, that the Environment is `self_hosted`, and that no other worker is polling it. |
+| `buildPublicSandboxLaunch()` | Declares the egress allow-list and the only credential that enters the sandbox, in [`src/policy.ts`](https://github.com/render-examples/claude-managed-agents-sandbox/blob/v1.0.0/src/policy.ts). |
+| `render.createAndWait()` | Creates the sandbox, records its ID immediately, and polls until it is `running`. |
+| `install-executor.sh` | Installs `ant` 2.1.0 after checking its pinned SHA-256, in [`scripts/install-executor.sh`](https://github.com/render-examples/claude-managed-agents-sandbox/blob/v1.0.0/scripts/install-executor.sh). |
+| `render.startWorker()` | Runs `ant beta:worker poll` as a streamed foreground command in the sandbox. |
+| `claude.waitForWorker()` | Waits until the Environment's work stats show the worker polling. |
+| `consumeSessionEvents()` | Logs native session events and returns Claude's final message when the Session goes idle. |
+| `collectOutputs()` | Copies regular files from `/workspace/output` to your machine. |
+| `cleanupRun()` | Deletes the Session and terminates the sandbox, each with its own timeout. |
+
+Each run writes its state to `runs/<run_id>/`: `run.json` (resource IDs,
+egress policy, and cleanup status, but no credentials), the native
+`events.jsonl`, and `result.txt`.
 
 ## What you built
 
-You built a one-shot Claude runner that accepts a prompt, routes one Managed
-Agents Session to a worker in a Render Sandbox, streams native session events,
-and copies optional output files back to your machine.
+You built a coding agent that:
+
+- Accepts a natural-language coding task
+- Runs Claude's commands and file edits in an isolated Render Sandbox with
+  default-deny egress
+- Streams native Managed Agents session events as it works
+- Copies deliverable files back to your machine and cleans up every per-run
+  resource
 
 ## Security
 
-The Anthropic application key never enters the sandbox. Code the agent runs can
-read any credential materialized in the same sandbox, so the Environment key
-must be restricted to the worker's task and the Environment should be dedicated
-to this example.
+Your Anthropic application key never enters the sandbox. Any code the agent runs
+can read credentials that are present in the sandbox, so restrict the
+Environment key to the worker's task and dedicate the Environment to this
+example. The current Render SDK has no credential broker, so the template sets
+the Environment key as a creation-time environment variable. That behavior is
+isolated in `src/policy.ts`, so a broker can replace it without changing the
+lifecycle.
 
-The Render egress policy is a default-deny hostname allow-list for
-`api.anthropic.com` and the pinned GitHub release download hosts. Tool inputs
-and outputs pass through Anthropic because Anthropic hosts the agent loop.
+The sandbox's egress policy is a default-deny allow-list. At run time, the
+worker needs only `api.anthropic.com`. The GitHub release hosts are needed only
+to download `ant`, but the SDK cannot narrow a policy after the sandbox is
+created, so they stay allowed for this short-lived run. Tool inputs and outputs
+pass through Anthropic, because Anthropic hosts the agent loop.
 
-`@renderinc/sdk` 1.3.0 exposes this hostname policy but does not expose a public
-credential-broker field. The template therefore injects only the restricted
-Environment credential with the SDK's documented `env` field. This behavior is
-isolated in `src/policy.ts` so a public broker field can replace it without
-changing the agent lifecycle. No unverified SDK fields are used.
+Treat every prompt as untrusted. Don't use production credentials or sensitive
+source code with this example until you have reviewed its policy and
+credential settings.
 
-Do not use production credentials or sensitive source code with this example
-until you have reviewed its policy and credential settings.
+## Customize the agent
 
-## Customize the template
-
-You can change:
-
-- prompt handling in `src/agent.ts`;
-- the worker version and installation in `scripts/install-executor.sh`;
-- the sandbox lifetime in `src/agent.ts` and egress policy in `src/policy.ts`;
-  and
-- output collection in `src/outputs.ts`.
+- **Prompt and instructions:** the runner sends your prompt as written. Change
+  Claude's system prompt and tools in the Managed Agent's configuration.
+- **Toolchain:** install more tools in `scripts/install-executor.sh`, and add
+  their download hosts to `INSTALL_DESTINATIONS` in `src/policy.ts`.
+- **Egress:** add hosts the agent needs while it works to
+  `RUNTIME_DESTINATIONS` in `src/policy.ts`.
+- **Lifetime:** pass `--timeout <seconds>` (the default is 600). The sandbox
+  lifetime is derived from it in `src/agent.ts`.
+- **Outputs:** pass `--output <path>` to copy files somewhere other than
+  `runs/<run_id>/output`, or change collection in `src/outputs.ts`.
 
 ## Clean up
 
-Cleanup runs automatically on success, failure, timeout, SIGINT, and SIGTERM.
-If cleanup is incomplete, the command prints the Anthropic Session ID, Render
-Sandbox ID, and exact manual cleanup commands.
+Cleanup runs automatically after success, failure, timeout, Ctrl+C, and
+SIGTERM. The runner keeps the shared Managed Agent and Environment.
 
-The template retains the shared Managed Agent and self-hosted Environment.
-
-## Troubleshooting
-
-### The Agent or Environment cannot be read
-
-Confirm Managed Agents beta access, application-key permissions, and the
-configured IDs.
-
-### The worker never starts polling
-
-Check the worker stream, Environment key, Environment ID, and egress policy.
-
-### The Session stays queued
-
-Confirm the Render worker is the intended worker for this Environment and that
-another worker has not claimed the work.
-
-### The agent produces no output files
-
-Inspect `runs/<run_id>/events.jsonl` and the final result. Output files are
-optional; prompts that need files should tell Claude to write them under
-`/workspace/output`.
-
-### Cleanup is incomplete
-
-Run the commands printed by the agent runner. Delete the per-run Session and terminate
-the Render Sandbox. Do not delete the shared Agent or Environment.
-
-The fallback commands use:
+If a cleanup step fails, the runner prints the exact commands to finish it:
 
 ```bash
 curl -X DELETE "https://api.anthropic.com/v1/sessions/$SESSION_ID" \
   -H "x-api-key: $ANTHROPIC_API_KEY" \
   -H "anthropic-version: 2023-06-01" \
   -H "anthropic-beta: managed-agents-2026-04-01"
-render ea sandboxes stop "$SANDBOX_ID" --confirm
+RENDER_WORKSPACE="$RENDER_WORKSPACE_ID" render ea sandboxes stop "$SANDBOX_ID" --confirm
 ```
+
+If Session creation fails without a clear answer from the API, the runner also
+prints a `reconcile` command that lists recent Sessions, so you can find and
+delete one that may have been created.
+
+## Troubleshooting
+
+### Preflight fails
+
+Confirm your Managed Agents beta access, the API key's permissions, and the
+Agent and Environment IDs. The Environment must be `self_hosted`.
+
+### Preflight reports a polling worker
+
+Another worker is polling the Environment and could claim this run. Stop it, or
+use a dedicated Environment.
+
+### The worker never starts polling
+
+Check the `[worker:stderr]` lines for authentication errors. Confirm the
+Environment key belongs to the configured Environment.
+
+### The agent produces no output files
+
+Inspect `runs/<run_id>/events.jsonl` and `result.txt`. Output files are
+optional, so prompts that need files should ask Claude to write them under
+`/workspace/output`.
+
+### Cleanup is incomplete
+
+Run the commands that the runner printed. Delete the per-run Session and
+terminate the sandbox, but not the shared Agent or Environment.
 
 ## Next steps
 
-- [Claude Managed Agents self-hosted sandbox documentation](https://platform.claude.com/docs/en/managed-agents/self-hosted-sandboxes)
-- [Claude Managed Agents session event stream](https://platform.claude.com/docs/en/managed-agents/events-and-streaming)
+- [Claude Managed Agents self-hosted sandboxes](https://platform.claude.com/docs/en/managed-agents/self-hosted-sandboxes)
+- [Claude Managed Agents event stream](https://platform.claude.com/docs/en/managed-agents/events-and-streaming)
 - [Render Sandboxes documentation](https://render.com/docs/sandboxes)
+- [Build a coding agent with OpenAI Agents API and Render Sandboxes](https://render.com/docs/sandboxes/hosted-agents/openai)
+- [Build a coding agent with Cursor Cloud Agents and Render Sandboxes](https://render.com/docs/sandboxes/hosted-agents/cursor)
 - [Template source](https://github.com/render-examples/claude-managed-agents-sandbox)
