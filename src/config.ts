@@ -50,8 +50,8 @@ export function parseCli(argv: string[]): CliOptions {
     if (arg === "--timeout") {
       const value = argv[++index];
       timeoutSeconds = Number(value);
-      if (!value || !Number.isFinite(timeoutSeconds) || timeoutSeconds <= 0) {
-        throw new Error("--timeout must be a positive number of seconds");
+      if (!value || !Number.isSafeInteger(timeoutSeconds) || timeoutSeconds <= 0) {
+        throw new Error("--timeout must be a positive integer number of seconds");
       }
     } else if (arg === "--output") {
       const value = argv[++index];
@@ -71,7 +71,7 @@ export function parseCli(argv: string[]): CliOptions {
 
   return {
     prompt,
-    timeoutMs: Math.floor(timeoutSeconds * 1000),
+    timeoutMs: timeoutSeconds * 1000,
     ...(outputPath ? { outputPath } : {}),
   };
 }

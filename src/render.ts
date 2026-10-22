@@ -1,6 +1,7 @@
 import { Render } from "@renderinc/sdk";
 import type { SandboxCreateInput } from "@renderinc/sdk/experimental";
 import { readFile } from "node:fs/promises";
+import { setTimeout as sleep } from "node:timers/promises";
 
 export interface SandboxInfo {
   id: string;
@@ -41,9 +42,6 @@ export interface BufferedExecResult {
   exitCode: number;
 }
 
-const sleep = (milliseconds: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, milliseconds));
-
 export class RenderSandbox {
   private readonly api: SandboxApi;
 
@@ -56,21 +54,27 @@ export class RenderSandbox {
       }).experimental.sandboxes as unknown as SandboxApi);
   }
 
+  /**
+   * The create request itself is not aborted: an abandoned request could create
+   * a sandbox whose ID is never recorded. The signal stops only the polling.
+   */
   async createAndWait(
     input: SandboxCreateInput,
     onCreated: (sandboxId: string) => Promise<void>,
     deadline: number,
+    signal: AbortSignal,
   ): Promise<SandboxInfo> {
     const sandbox = await this.api.create(input);
     await onCreated(sandbox.id);
 
     while (Date.now() < deadline) {
+      signal.throwIfAborted();
       const current = await this.api.get(sandbox.id);
       if (current.status === "running") return current;
       if (current.status === "errored" || current.status === "terminated") {
         throw new Error(`Render sandbox ${sandbox.id} became ${current.status}`);
       }
-      await sleep(1_500);
+      await sleep(1_500, undefined, { signal });
     }
 
     throw new Error(`Timed out waiting for Render sandbox ${sandbox.id}`);

@@ -14,6 +14,8 @@ export interface RunState {
   anthropic_environment_id: string;
   started_at: string;
   deadline: string;
+  effective_egress_policy?: string[];
+  ambiguous_mutation?: string;
   cleanup: {
     anthropic_session: CleanupStatus;
     sandbox: CleanupStatus;

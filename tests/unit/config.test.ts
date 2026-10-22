@@ -10,8 +10,14 @@ test("loadConfig reports every missing variable", () => {
 });
 
 test("parseCli accepts prompt, timeout, and output", () => {
-  const parsed = parseCli(["build", "it", "--timeout", "12.5", "--output", "./artifacts"]);
+  const parsed = parseCli(["build", "it", "--timeout", "90", "--output", "./artifacts"]);
   assert.equal(parsed.prompt, "build it");
-  assert.equal(parsed.timeoutMs, 12_500);
+  assert.equal(parsed.timeoutMs, 90_000);
   assert.equal(parsed.outputPath, `${process.cwd()}/artifacts`);
+});
+
+test("parseCli rejects fractional and non-positive timeouts", () => {
+  for (const value of ["12.5", "0", "-1", "abc"]) {
+    assert.throws(() => parseCli(["prompt", "--timeout", value]), /positive integer/);
+  }
 });

@@ -17,25 +17,36 @@ export interface WorkerCredential {
 export interface PublicSandboxLaunch {
   networkPolicy: SandboxNetworkPolicy;
   env: Record<string, string>;
+  egressDestinations: string[];
   policySummary: string;
   credentialSummary: string;
 }
 
+/** Hosts the Managed Agents worker needs while the Session runs. */
+export const RUNTIME_DESTINATIONS = ["api.anthropic.com"] as const;
+
+/**
+ * Hosts used only to download the pinned `ant` release. The SDK cannot narrow
+ * a policy after creation, so they stay allowed for this short-lived run.
+ */
+export const INSTALL_DESTINATIONS = [
+  "github.com",
+  "release-assets.githubusercontent.com",
+  "objects.githubusercontent.com",
+] as const;
+
 export function buildPublicSandboxLaunch(credential: WorkerCredential): PublicSandboxLaunch {
+  const egressDestinations = [...RUNTIME_DESTINATIONS, ...INSTALL_DESTINATIONS];
   return {
     networkPolicy: {
       type: "allow-list",
-      rules: [
-        { domain: "api.anthropic.com", protocol: "https" },
-        { domain: "github.com", protocol: "https" },
-        { domain: "release-assets.githubusercontent.com", protocol: "https" },
-        { domain: "objects.githubusercontent.com", protocol: "https" },
-      ],
+      rules: egressDestinations.map((domain) => ({ domain, protocol: "https" })),
     },
     env: {
       ANTHROPIC_ENVIRONMENT_ID: credential.environmentId,
       ANTHROPIC_ENVIRONMENT_KEY: credential.environmentKey,
     },
+    egressDestinations,
     policySummary:
       "default-deny allow-list: api.anthropic.com and pinned ant release download hosts",
     credentialSummary:

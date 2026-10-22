@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type Anthropic from "@anthropic-ai/sdk";
-import { ClaudeManagedAgents } from "../../src/anthropic.js";
+import { ClaudeManagedAgents, isAmbiguousMutationError } from "../../src/anthropic.js";
 
 test("fake Managed Agents flow checks readiness, creates, submits, interrupts, and deletes", async () => {
   const calls: string[] = [];
+  const requestOptions: Record<string, unknown> = {};
   let statsCalls = 0;
   let retrieveCalls = 0;
   const fake = {
@@ -25,7 +26,10 @@ test("fake Managed Agents flow checks readiness, creates, submits, interrupts, a
         },
       },
       sessions: {
-        create: async () => ({ id: "sesn-test" }),
+        create: async (_body: unknown, options: unknown) => {
+          requestOptions.create = options;
+          return { id: "sesn-test" };
+        },
         retrieve: async () => ({
           id: "sesn-test",
           status: retrieveCalls++ === 0 ? "running" : "idle",
@@ -36,21 +40,18 @@ test("fake Managed Agents flow checks readiness, creates, submits, interrupts, a
             (async function* () {
               yield { type: "session.status_idle", stop_reason: { type: "end_turn" } };
             })(),
-          send: async (_id: string, body: { events: Array<{ type: string }> }) => {
+          send: async (_id: string, body: { events: Array<{ type: string }> }, options: unknown) => {
             calls.push(body.events[0]!.type);
+            requestOptions[body.events[0]!.type] = options;
           },
         },
       },
     },
   };
+  const signal = new AbortController().signal;
   const claude = new ClaudeManagedAgents("", fake as unknown as Anthropic);
-  const baseline = await claude.preflight("agent-test", "env-test");
-  await claude.waitForWorker(
-    "env-test",
-    baseline,
-    Date.now() + 1_000,
-    new AbortController().signal,
-  );
+  await claude.preflight("agent-test", "env-test", signal);
+  await claude.waitForWorker("env-test", Date.now() + 5_000, signal);
   const sessionId = await claude.createSession("agent-test", "env-test", async () => {
     calls.push("persist");
   });
@@ -59,4 +60,14 @@ test("fake Managed Agents flow checks readiness, creates, submits, interrupts, a
 
   assert.equal(sessionId, "sesn-test");
   assert.deepEqual(calls, ["persist", "user.message", "user.interrupt", "delete"]);
+  assert.deepEqual(requestOptions.create, { maxRetries: 0 });
+  assert.deepEqual(requestOptions["user.message"], { maxRetries: 0 });
+});
+
+test("isAmbiguousMutationError reads Anthropic status and Render statusCode", () => {
+  assert.equal(isAmbiguousMutationError(new Error("socket hang up")), true);
+  assert.equal(isAmbiguousMutationError(Object.assign(new Error("x"), { status: 503 })), true);
+  assert.equal(isAmbiguousMutationError(Object.assign(new Error("x"), { status: 400 })), false);
+  assert.equal(isAmbiguousMutationError(Object.assign(new Error("x"), { statusCode: 422 })), false);
+  assert.equal(isAmbiguousMutationError(Object.assign(new Error("x"), { statusCode: 502 })), true);
 });
