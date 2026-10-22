@@ -98,7 +98,7 @@ export async function runAgent(
         signal,
       ),
       () => !state.sandbox_id,
-      "Render Sandbox creation may have succeeded without returning an ID. Reconcile before retrying: render ea sandboxes list",
+      "Render Sandbox creation may have succeeded without returning an ID. Reconcile before retrying: RENDER_WORKSPACE=\"$RENDER_WORKSPACE_ID\" render ea sandboxes list",
     );
 
     await store.update({ phase: "install" });

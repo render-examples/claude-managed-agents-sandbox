@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdir, readFile, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
-import test from "node:test";
+import { test } from "vitest";
 import { RunStore, type RunState } from "../../src/state.js";
 
 test("RunStore writes state atomically with mode 0600 and no credentials", async () => {

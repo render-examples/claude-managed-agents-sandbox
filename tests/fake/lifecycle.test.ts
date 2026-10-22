@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
-import test from "node:test";
+import { test } from "vitest";
 import { setTimeout as sleep } from "node:timers/promises";
 import { runAgent } from "../../src/agent.js";
 import type { ClaudeManagedAgents } from "../../src/anthropic.js";

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { consumeSessionEvents, redactSecrets } from "../../src/events.js";
 
 async function* events(): AsyncGenerator<unknown> {

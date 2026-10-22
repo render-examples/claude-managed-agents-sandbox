@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import type Anthropic from "@anthropic-ai/sdk";
 import { ClaudeManagedAgents, isAmbiguousMutationError } from "../../src/anthropic.js";
 
