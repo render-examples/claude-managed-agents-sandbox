@@ -98,33 +98,49 @@ export class ClaudeManagedAgents {
     );
   }
 
+  /**
+   * A worker that is still polling can resume an idle Session between the
+   * status check and the delete, which the API rejects with a 400. Each retry
+   * interrupts the Session again before deleting.
+   */
   async interruptAndDelete(sessionId: string): Promise<void> {
-    let session;
-    try {
-      session = await this.client.beta.sessions.retrieve(sessionId, {}, CLEANUP_REQUEST);
-    } catch (error) {
-      if (statusCode(error) === 404) return;
-      throw error;
-    }
+    const interruptDeadline = Date.now() + 30_000;
 
-    if (session.status === "running" || session.status === "rescheduling") {
-      await this.client.beta.sessions.events.send(
-        sessionId,
-        { events: [{ type: "user.interrupt" }] },
-        CLEANUP_REQUEST,
-      );
-
-      const interruptDeadline = Date.now() + 30_000;
-      while (Date.now() < interruptDeadline) {
+    for (let attempt = 1; ; attempt++) {
+      let session;
+      try {
         session = await this.client.beta.sessions.retrieve(sessionId, {}, CLEANUP_REQUEST);
-        if (session.status === "idle" || session.status === "terminated") break;
-        await sleep(500);
+      } catch (error) {
+        if (statusCode(error) === 404) return;
+        throw error;
+      }
+
+      if (session.status === "running" || session.status === "rescheduling") {
+        await this.client.beta.sessions.events.send(
+          sessionId,
+          { events: [{ type: "user.interrupt" }] },
+          CLEANUP_REQUEST,
+        );
+
+        while (Date.now() < interruptDeadline) {
+          session = await this.client.beta.sessions.retrieve(sessionId, {}, CLEANUP_REQUEST);
+          if (session.status === "idle" || session.status === "terminated") break;
+          await sleep(500);
+        }
+      }
+
+      if (session.status === "running" || session.status === "rescheduling") {
+        throw new Error(`Session ${sessionId} did not become idle after interrupt`);
+      }
+
+      try {
+        await this.client.beta.sessions.delete(sessionId, {}, CLEANUP_REQUEST);
+        return;
+      } catch (error) {
+        const status = statusCode(error);
+        if (status === 404) return;
+        if (status !== 400 || attempt >= 3 || Date.now() >= interruptDeadline) throw error;
       }
     }
-
-    if (session.status === "running" || session.status === "rescheduling") {
-      throw new Error(`Session ${sessionId} did not become idle after interrupt`);
-    }
-    await this.client.beta.sessions.delete(sessionId, {}, CLEANUP_REQUEST);
   }
 }

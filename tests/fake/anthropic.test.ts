@@ -64,6 +64,36 @@ test("fake Managed Agents flow checks readiness, creates, submits, interrupts, a
   assert.deepEqual(requestOptions["user.message"], { maxRetries: 0 });
 });
 
+test("cleanup interrupts and retries when a worker resumes the Session before delete", async () => {
+  const calls: string[] = [];
+  const statuses = ["idle", "running", "idle"];
+  let deletes = 0;
+  const fake = {
+    beta: {
+      sessions: {
+        retrieve: async () => ({ id: "sesn-test", status: statuses.shift() ?? "idle" }),
+        delete: async () => {
+          calls.push("delete");
+          if (deletes++ === 0) {
+            throw Object.assign(new Error("Cannot delete session while it is running."), {
+              status: 400,
+            });
+          }
+        },
+        events: {
+          send: async (_id: string, body: { events: Array<{ type: string }> }) => {
+            calls.push(body.events[0]!.type);
+          },
+        },
+      },
+    },
+  };
+
+  await new ClaudeManagedAgents("", fake as unknown as Anthropic).interruptAndDelete("sesn-test");
+
+  assert.deepEqual(calls, ["delete", "user.interrupt", "delete"]);
+});
+
 test("isAmbiguousMutationError reads Anthropic status and Render statusCode", () => {
   assert.equal(isAmbiguousMutationError(new Error("socket hang up")), true);
   assert.equal(isAmbiguousMutationError(Object.assign(new Error("x"), { status: 503 })), true);

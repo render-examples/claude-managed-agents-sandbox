@@ -38,12 +38,27 @@ function errorMessage(event: UnknownRecord): string {
   return typeof error?.message === "string" ? error.message : "unknown session error";
 }
 
+/**
+ * A self-hosted Session goes idle with `requires_action` while the worker runs
+ * each built-in tool call. Only allowed `agent.tool_use` events are resolved by
+ * the worker; custom tools and tool confirmations would block forever.
+ */
+function blockedOnWorker(stopReason: UnknownRecord, workerToolUseIds: ReadonlySet<string>): boolean {
+  const ids = stopReason.event_ids;
+  return (
+    Array.isArray(ids) &&
+    ids.length > 0 &&
+    ids.every((id) => typeof id === "string" && workerToolUseIds.has(id))
+  );
+}
+
 export async function consumeSessionEvents(
   stream: AsyncIterable<unknown>,
   sink: EventSink,
   secrets: readonly string[],
 ): Promise<string> {
   let finalText = "";
+  const workerToolUseIds = new Set<string>();
 
   for await (const rawEvent of stream) {
     const event = asRecord(rawEvent);
@@ -60,6 +75,10 @@ export async function consumeSessionEvents(
         break;
       }
       case "agent.tool_use":
+        if (typeof event.id === "string" && event.evaluated_permission !== "ask") {
+          workerToolUseIds.add(event.id);
+        }
+      // falls through
       case "agent.custom_tool_use": {
         const name = typeof event.name === "string" ? event.name : "tool";
         process.stdout.write(`tool          ${name}\n`);
@@ -81,6 +100,9 @@ export async function consumeSessionEvents(
       case "session.status_idle": {
         const stopReason = asRecord(event.stop_reason);
         const reason = typeof stopReason?.type === "string" ? stopReason.type : "unknown";
+        if (reason === "requires_action" && blockedOnWorker(stopReason!, workerToolUseIds)) {
+          break;
+        }
         if (reason !== "end_turn") {
           throw new Error(`Claude Managed Agents session stopped: ${reason}`);
         }
