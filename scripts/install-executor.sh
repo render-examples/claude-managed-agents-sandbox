@@ -21,6 +21,13 @@ case "$(uname -m)" in
     ;;
 esac
 
+# The worker runs its bash tool in a PTY, and Render Sandboxes boot without devpts.
+if ! grep -qs ' /dev/pts devpts ' /proc/mounts; then
+  mkdir -p /dev/pts
+  mount -t devpts devpts /dev/pts -o newinstance,ptmxmode=0666,mode=0620
+  ln -sf /dev/pts/ptmx /dev/ptmx
+fi
+
 mkdir -p "$INSTALL_DIR"
 curl --fail --silent --show-error --location \
   "${RELEASE_BASE}/ant_${VERSION}_linux_${arch}.tar.gz" \

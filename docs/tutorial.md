@@ -127,7 +127,7 @@ Here is what the key pieces do:
 | `claude.preflight()` | Confirms that the Agent and Environment exist, that the Environment is `self_hosted`, and that no other worker is polling it. |
 | `buildPublicSandboxLaunch()` | Declares the egress allow-list and the only credential that enters the sandbox, in [`src/policy.ts`](https://github.com/render-examples/claude-managed-agents-sandbox/blob/v1.0.0/src/policy.ts). |
 | `render.createAndWait()` | Creates the sandbox, records its ID immediately, and polls until it is `running`. |
-| `install-executor.sh` | Installs `ant` 2.1.0 after checking its pinned SHA-256, in [`scripts/install-executor.sh`](https://github.com/render-examples/claude-managed-agents-sandbox/blob/v1.0.0/scripts/install-executor.sh). |
+| `install-executor.sh` | Mounts the PTY filesystem that the worker's bash tool needs, then installs `ant` 2.1.0 after checking its pinned SHA-256, in [`scripts/install-executor.sh`](https://github.com/render-examples/claude-managed-agents-sandbox/blob/v1.0.0/scripts/install-executor.sh). |
 | `render.startWorker()` | Runs `ant beta:worker poll` as a streamed foreground command in the sandbox. |
 | `claude.waitForWorker()` | Waits until the Environment's work stats show the worker polling. |
 | `consumeSessionEvents()` | Logs native session events and returns Claude's final message when the Session goes idle. |
