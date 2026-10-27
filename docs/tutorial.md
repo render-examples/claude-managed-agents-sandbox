@@ -1,4 +1,4 @@
-# Build a coding agent with Claude Managed Agents and Render Sandboxes
+# Run Claude Managed Agents on Render Sandboxes
 
 > **Note:** Render Sandboxes is in early access. Claude Managed Agents is in
 > beta and uses the `managed-agents-2026-04-01` API.
