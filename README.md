@@ -10,7 +10,6 @@ your machine.
 
 Follow the tutorial:
 [Run Claude Managed Agents on Render Sandboxes](https://render.com/docs/sandboxes/hosted-agents/claude-managed-agents).
-Its source is [`docs/tutorial.md`](docs/tutorial.md).
 
 ## Quickstart
 

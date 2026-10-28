@@ -6,9 +6,8 @@ import { test } from "vitest";
 const root = process.cwd();
 
 test("documentation and example configuration use the implemented variables", async () => {
-  const [example, tutorial, readme] = await Promise.all([
+  const [example, readme] = await Promise.all([
     readFile(join(root, ".env.example"), "utf8"),
-    readFile(join(root, "docs", "tutorial.md"), "utf8"),
     readFile(join(root, "README.md"), "utf8"),
   ]);
   const names = [
@@ -22,10 +21,9 @@ test("documentation and example configuration use the implemented variables", as
 
   for (const name of names) {
     assert.match(example, new RegExp(`^${name}=`, "m"));
-    assert.match(tutorial, new RegExp(name));
   }
   assert.match(readme, /npm run agent --/);
-  assert.match(tutorial, /managed-agents-2026-04-01/);
+  assert.match(readme, /managed-agents-2026-04-01/);
 });
 
 test("the worker installer pins a version and both Linux checksums", async () => {
