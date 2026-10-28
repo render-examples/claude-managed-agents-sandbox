@@ -64,7 +64,7 @@ export async function cleanupRun(
       console.error(`cleanup       sandbox failed: ${errorMessage(error)}`);
       console.error("Manual cleanup command:");
       console.error(
-        `RENDER_WORKSPACE="$RENDER_WORKSPACE_ID" render ea sandboxes stop ${store.state.sandbox_id} --confirm`,
+        `RENDER_WORKSPACE="$RENDER_WORKSPACE_ID" render sandboxes stop ${store.state.sandbox_id} --confirm`,
       );
     }
     await store.save();
