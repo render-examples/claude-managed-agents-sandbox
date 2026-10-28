@@ -9,7 +9,7 @@ your machine.
 > uses the `managed-agents-2026-04-01` API.
 
 Follow the tutorial:
-[Build a coding agent with Claude Managed Agents and Render Sandboxes](https://render.com/docs/sandboxes/hosted-agents/claude-managed-agents).
+[Run Claude Managed Agents on Render Sandboxes](https://render.com/docs/sandboxes/hosted-agents/claude-managed-agents).
 Its source is [`docs/tutorial.md`](docs/tutorial.md).
 
 ## Quickstart

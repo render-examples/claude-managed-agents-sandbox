@@ -234,6 +234,6 @@ terminate the sandbox, but not the shared Agent or Environment.
 - [Claude Managed Agents self-hosted sandboxes](https://platform.claude.com/docs/en/managed-agents/self-hosted-sandboxes)
 - [Claude Managed Agents event stream](https://platform.claude.com/docs/en/managed-agents/events-and-streaming)
 - [Render Sandboxes documentation](https://render.com/docs/sandboxes)
-- [Build a coding agent with OpenAI Agents API and Render Sandboxes](https://render.com/docs/sandboxes/hosted-agents/openai)
-- [Build a coding agent with Cursor Cloud Agents and Render Sandboxes](https://render.com/docs/sandboxes/hosted-agents/cursor)
+- [Run the OpenAI Agents API on Render Sandboxes](https://render.com/docs/sandboxes/hosted-agents/openai)
+- [Run Cursor Cloud Agents on Render Sandboxes](https://render.com/docs/sandboxes/hosted-agents/cursor)
 - [Template source](https://github.com/render-examples/claude-managed-agents-sandbox)
