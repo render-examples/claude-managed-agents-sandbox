@@ -42,8 +42,9 @@ export async function cleanupRun(
     } catch (error) {
       store.state.cleanup.anthropic_session = "failed";
       console.error(`cleanup       session failed: ${errorMessage(error)}`);
+      console.error("Manual cleanup command:");
       console.error(
-        `manual        curl -X DELETE "https://api.anthropic.com/v1/sessions/${store.state.anthropic_session_id}" -H "x-api-key: $ANTHROPIC_API_KEY" -H "anthropic-version: 2023-06-01" -H "anthropic-beta: managed-agents-2026-04-01"`,
+        `curl -X DELETE "https://api.anthropic.com/v1/sessions/${store.state.anthropic_session_id}" -H "x-api-key: $ANTHROPIC_API_KEY" -H "anthropic-version: 2023-06-01" -H "anthropic-beta: managed-agents-2026-04-01"`,
       );
     }
     await store.save();
@@ -61,8 +62,9 @@ export async function cleanupRun(
     } catch (error) {
       store.state.cleanup.sandbox = "failed";
       console.error(`cleanup       sandbox failed: ${errorMessage(error)}`);
+      console.error("Manual cleanup command:");
       console.error(
-        `manual        RENDER_WORKSPACE="$RENDER_WORKSPACE_ID" render ea sandboxes stop ${store.state.sandbox_id} --confirm`,
+        `RENDER_WORKSPACE="$RENDER_WORKSPACE_ID" render ea sandboxes stop ${store.state.sandbox_id} --confirm`,
       );
     }
     await store.save();
